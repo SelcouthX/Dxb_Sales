@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DXB Deal Scanner</title>
+<style>
+  :root {
+    --bg: #f7f9fc; --card: #ffffff; --ink: #1c2433; --muted: #6b7689;
+    --line: #e4e9f2; --accent: #0a7cff; --good: #0f9d58; --goodbg: #e7f7ee; --warn: #b26a00;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { font-size: 17px; margin: 32px 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi b { display: block; font-size: 24px; }
+  .kpi span { color: var(--muted); font-size: 13px; }
+  .deal { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 14px 16px; margin-bottom: 10px; display: flex; gap: 12px;
+          justify-content: space-between; align-items: center; flex-wrap: wrap; }
+  .deal .route { font-weight: 600; font-size: 16px; }
+  .deal .meta { color: var(--muted); font-size: 13px; }
+  .pill { background: var(--goodbg); color: var(--good); font-weight: 700;
+          padding: 4px 10px; border-radius: 999px; font-size: 13px; }
+  .price { font-size: 18px; font-weight: 700; }
+  .price s { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
+  a.btn { color: #fff; background: var(--accent); padding: 8px 14px; border-radius: 8px;
+          text-decoration: none; font-weight: 600; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card);
+          border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  .empty { background: var(--card); border: 1px dashed var(--line); border-radius: 12px;
+           padding: 20px; color: var(--muted); }
+  .warn { color: var(--warn); }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DXB Deal Scanner</h1>
+  <p class="sub">Round trips from Dubai, 3–14 days. A deal = 40%+ below the normal price for that route and month.</p>
+
+  <div class="kpis" id="kpis"></div>
+
+  <h2>Deals found</h2>
+  <div id="deals"></div>
+
+  <h2>Route health <span class="sub" style="font-weight:400">— is there enough data to judge?</span></h2>
+  <div class="scroll"><table id="routes"></table></div>
+</main>
+
+<script>
+const fmt = (n) => Math.round(n).toLocaleString();
+const day = (s) => s ? new Date(s).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+const ago = (s) => {
+  if (!s) return "never";
+  const m = Math.round((Date.now() - new Date(s)) / 60000);
+  return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
+
+fetch("/api/deals").then((r) => r.json()).then(({ deals, stats, state }) => {
+  const routes = Object.entries(stats);
+  const samples = routes.reduce((a, [, s]) => a + s.samples, 0);
+  const week = deals.filter((d) => Date.now() - new Date(d.flaggedAt) < 7 * 864e5).length;
+
+  document.getElementById("kpis").innerHTML = [
+    [deals.length, "deals flagged total"],
+    [week, "deals in last 7 days"],
+    [routes.length, "routes scanned"],
+    [fmt(samples), "prices logged"],
+    [ago(state.lastRun), "last scan"],
+  ].map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("");
+
+  document.getElementById("deals").innerHTML = deals.length ? deals.map((d) => `
+    <div class="deal">
+      <div>
+        <div class="route">${d.route.replace("-", " → ")}</div>
+        <div class="meta">${day(d.departAt)} – ${day(d.returnAt)} · ${d.airline || ""} ·
+          ${d.transfers === 0 ? "direct" : (d.transfers ?? "?") + " stop(s)"} · flagged ${ago(d.flaggedAt)}</div>
+      </div>
+      <div class="price">AED ${fmt(d.price)}<s>normal ${fmt(d.normal)}</s></div>
+      <span class="pill">−${d.dropPct}%</span>
+      ${d.link ? `<a class="btn" href="${d.link}" target="_blank" rel="noopener">Check fare</a>` : ""}
+    </div>`).join("")
+    : `<div class="empty">No deals yet. The scanner needs ~15 prices per route and month before it can judge what "normal" is — expect the first real signal after 3–5 days.</div>`;
+
+  const rows = routes.sort((a, b) => a[0].localeCompare(b[0])).map(([dest, s]) => {
+    const months = Object.entries(s.months || {});
+    const ready = months.filter(([, m]) => m.samples >= 15).length;
+    return `<tr><td><b>DXB → ${dest}</b></td><td>${s.samples}</td>
+      <td class="${ready ? "" : "warn"}">${ready}/${months.length}</td>
+      <td>${s.lastFound}</td><td>${ago(s.lastScan)}</td></tr>`;
+  }).join("");
+  document.getElementById("routes").innerHTML =
+    `<tr><th>Route</th><th>Prices logged</th><th>Months ready</th><th>Found last scan</th><th>Last scan</th></tr>` +
+    (rows || `<tr><td colspan="5">Waiting for the first scan…</td></tr>`);
+}).catch(() => {
+  document.getElementById("deals").innerHTML = `<div class="empty">Couldn't load data yet.</div>`;
+});
+</script>
+</body>
+</html>
