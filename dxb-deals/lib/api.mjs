@@ -1,15 +1,15 @@
 // Talks to the Travelpayouts (Aviasales) Data API.
 // Docs: https://support.travelpayouts.com/hc/en-us/articles/203956163-Aviasales-Data-API
 import {
-  ORIGIN, CURRENCY, MARKET, TOKEN, MARKER, TRIP_MIN_DAYS, TRIP_MAX_DAYS,
+  CURRENCY, MARKET, TOKEN, MARKER, TRIP_MIN_DAYS, TRIP_MAX_DAYS,
 } from "./config.mjs";
 
 const BASE = "https://api.travelpayouts.com/aviasales/v3/grouped_prices";
 
-// Cheapest round trip per departure day, for one destination and one month.
-export async function fetchMonth(destination, month) {
+// Cheapest round trip per departure day, for one route and one month.
+export async function fetchMonth(origin, destination, month) {
   const params = new URLSearchParams({
-    origin: ORIGIN,
+    origin,
     destination,
     departure_at: month, // YYYY-MM
     group_by: "departure_at",
@@ -22,13 +22,14 @@ export async function fetchMonth(destination, month) {
   const res = await fetch(`${BASE}?${params}`, {
     headers: { "X-Access-Token": TOKEN, "Accept-Encoding": "gzip, deflate" },
   });
-  if (!res.ok) throw new Error(`${destination} ${month}: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`${origin}-${destination} ${month}: HTTP ${res.status}`);
   const json = await res.json();
-  if (!json.success) throw new Error(`${destination} ${month}: ${json.error}`);
+  if (!json.success) throw new Error(`${origin}-${destination} ${month}: ${json.error}`);
 
   const seenAt = new Date().toISOString();
   return Object.values(json.data || {}).map((t) => ({
-    route: `${ORIGIN}-${destination}`,
+    route: `${origin}-${destination}`,
+    origin,
     destination,
     price: t.price,
     airline: t.airline,

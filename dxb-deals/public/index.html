@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DXB Deal Scanner</title>
+<title>UAE Deal Scanner</title>
 <style>
   :root {
     --bg: #f7f9fc; --card: #ffffff; --ink: #1c2433; --muted: #6b7689;
@@ -39,13 +39,18 @@
            padding: 20px; color: var(--muted); }
   .warn { color: var(--warn); }
   .scroll { overflow-x: auto; }
+  .filters { display: flex; gap: 8px; margin: 0 0 16px; flex-wrap: wrap; }
+  .filters button { border: 1px solid var(--line); background: var(--card); color: var(--ink);
+                    padding: 6px 14px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer; }
+  .filters button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
 <main>
-  <h1>DXB Deal Scanner</h1>
-  <p class="sub">Round trips from Dubai, 3–14 days. A deal = 40%+ below the normal price for that route and month.</p>
+  <h1>UAE Deal Scanner</h1>
+  <p class="sub">Round trips from Dubai, Abu Dhabi and Sharjah, 3–14 days. A deal = 40%+ below the normal price for that route and month.</p>
 
+  <div class="filters" id="filters"></div>
   <div class="kpis" id="kpis"></div>
 
   <h2>Deals found</h2>
@@ -64,10 +69,22 @@ const ago = (s) => {
   return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
 
-fetch("/api/deals").then((r) => r.json()).then(({ deals, stats, state }) => {
-  const routes = Object.entries(stats);
+let data = null;
+let origin = "ALL";
+
+function render() {
+  const { deals: allDeals, stats, state } = data;
+  const match = (route) => origin === "ALL" || route.startsWith(origin + "-");
+  const deals = allDeals.filter((d) => match(d.route));
+  const routes = Object.entries(stats).filter(([k]) => match(k));
   const samples = routes.reduce((a, [, s]) => a + s.samples, 0);
   const week = deals.filter((d) => Date.now() - new Date(d.flaggedAt) < 7 * 864e5).length;
+
+  const origins = ["ALL", ...new Set(Object.keys(stats).map((k) => k.split("-")[0]))];
+  document.getElementById("filters").innerHTML = origins.map((o) =>
+    `<button class="${o === origin ? "on" : ""}" data-o="${o}">${o === "ALL" ? "All airports" : o}</button>`).join("");
+  document.querySelectorAll("#filters button").forEach((b) =>
+    b.onclick = () => { origin = b.dataset.o; render(); });
 
   document.getElementById("kpis").innerHTML = [
     [deals.length, "deals flagged total"],
@@ -88,19 +105,21 @@ fetch("/api/deals").then((r) => r.json()).then(({ deals, stats, state }) => {
       <span class="pill">−${d.dropPct}%</span>
       ${d.link ? `<a class="btn" href="${d.link}" target="_blank" rel="noopener">Check fare</a>` : ""}
     </div>`).join("")
-    : `<div class="empty">No deals yet. The scanner needs ~15 prices per route and month before it can judge what "normal" is — expect the first real signal after 3–5 days.</div>`;
+    : `<div class="empty">No deals yet. The scanner needs ~15 prices per route and month before it can judge what "normal" is.</div>`;
 
-  const rows = routes.sort((a, b) => a[0].localeCompare(b[0])).map(([dest, s]) => {
+  const rows = routes.sort((a, b) => a[0].localeCompare(b[0])).map(([route, s]) => {
     const months = Object.entries(s.months || {});
     const ready = months.filter(([, m]) => m.samples >= 15).length;
-    return `<tr><td><b>DXB → ${dest}</b></td><td>${s.samples}</td>
+    return `<tr><td><b>${route.replace("-", " → ")}</b></td><td>${s.samples}</td>
       <td class="${ready ? "" : "warn"}">${ready}/${months.length}</td>
       <td>${s.lastFound}</td><td>${ago(s.lastScan)}</td></tr>`;
   }).join("");
   document.getElementById("routes").innerHTML =
     `<tr><th>Route</th><th>Prices logged</th><th>Months ready</th><th>Found last scan</th><th>Last scan</th></tr>` +
     (rows || `<tr><td colspan="5">Waiting for the first scan…</td></tr>`);
-}).catch(() => {
+}
+
+fetch("/api/deals").then((r) => r.json()).then((d) => { data = d; render(); }).catch(() => {
   document.getElementById("deals").innerHTML = `<div class="empty">Couldn't load data yet.</div>`;
 });
 </script>
