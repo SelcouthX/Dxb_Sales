@@ -23,6 +23,20 @@ test("flags a 45% drop", () => {
   assert.equal(deals.length, 1);
   assert.equal(deals[0].normal, 1400);
   assert.equal(deals[0].dropPct, 45);
+  assert.equal(deals[0].tier, "deal");
+});
+
+test("flags a 30% drop as a good price, not a deal", () => {
+  const fresh = [{ route: "DXB-ATH", price: 980, departAt: "2026-11-20T08:00:00+04:00", seenAt: iso(0) }];
+  const deals = findDeals(fresh, history);
+  assert.equal(deals.length, 1);
+  assert.equal(deals[0].tier, "good");
+  assert.equal(deals[0].dropPct, 30);
+});
+
+test("ignores a 20% drop", () => {
+  const fresh = [{ route: "DXB-ATH", price: 1120, departAt: "2026-11-20T08:00:00+04:00", seenAt: iso(0) }];
+  assert.equal(findDeals(fresh, history).length, 0);
 });
 
 test("ignores a normal price", () => {

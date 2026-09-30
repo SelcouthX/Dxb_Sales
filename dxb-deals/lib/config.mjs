@@ -25,6 +25,7 @@ export const ROUTES = ORIGINS.flatMap((o) => DESTINATIONS.map((d) => ({ origin: 
 export const MONTHS_AHEAD = 6;      // scan departures this many months out
 export const ROUTES_PER_RUN = 5;    // each run (every 20 min) scans this many routes
 export const DEAL_THRESHOLD = 0.4;  // 40% below normal = deal
+export const GOOD_THRESHOLD = 0.25; // 25–39% below normal = "good price" (lower tier, for testing)
 export const MIN_SAMPLES = 15;      // don't judge "normal" until we've seen this many prices
 export const HISTORY_DAYS = 45;     // forget observations older than this
 export const TRIP_MIN_DAYS = 3;     // round trips between 3 and 14 days

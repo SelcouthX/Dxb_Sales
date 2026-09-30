@@ -1,5 +1,5 @@
 // Pure logic — no network, no storage. Easy to test.
-import { DEAL_THRESHOLD, MIN_SAMPLES, HISTORY_DAYS } from "./config.mjs";
+import { DEAL_THRESHOLD, GOOD_THRESHOLD, MIN_SAMPLES, HISTORY_DAYS } from "./config.mjs";
 
 export function median(nums) {
   if (!nums.length) return null;
@@ -36,8 +36,9 @@ export function baselines(history) {
   return out;
 }
 
-// A fresh price is a deal if it's DEAL_THRESHOLD below that month's normal,
+// A fresh price is flagged if it's at least GOOD_THRESHOLD below that month's normal,
 // and we have enough samples to trust "normal".
+// tier "deal" = DEAL_THRESHOLD+ below, tier "good" = between GOOD_THRESHOLD and DEAL_THRESHOLD.
 export function findDeals(fresh, history) {
   const base = baselines(history);
   const deals = [];
@@ -45,8 +46,13 @@ export function findDeals(fresh, history) {
     const b = base[monthOf(o.departAt)];
     if (!b || b.samples < MIN_SAMPLES) continue;
     const drop = 1 - o.price / b.median;
-    if (drop >= DEAL_THRESHOLD) {
-      deals.push({ ...o, normal: Math.round(b.median), dropPct: Math.round(drop * 100) });
+    if (drop >= GOOD_THRESHOLD) {
+      deals.push({
+        ...o,
+        normal: Math.round(b.median),
+        dropPct: Math.round(drop * 100),
+        tier: drop >= DEAL_THRESHOLD ? "deal" : "good",
+      });
     }
   }
   return deals;

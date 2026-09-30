@@ -51,14 +51,18 @@ export async function runScan() {
     };
   }
 
-  // Keep a rolling log of deals (newest first, last 300).
+  // Keep a rolling log (newest first): last 300 deals + last 300 good prices,
+  // capped separately so a flood of "good" prices can't push real deals out.
   const deals = (await store.get("deals", { type: "json" })) || [];
   const seen = new Set(deals.map((d) => `${d.route}|${d.departAt}|${d.price}`));
   for (const d of newDeals) {
     const id = `${d.route}|${d.departAt}|${d.price}`;
     if (!seen.has(id)) { deals.unshift({ ...d, flaggedAt: new Date().toISOString() }); seen.add(id); }
   }
-  await store.setJSON("deals", deals.slice(0, 300));
+  const isDeal = (d) => (d.tier || "deal") === "deal"; // entries from before tiers existed were all 40%+
+  const kept = [...deals.filter(isDeal).slice(0, 300), ...deals.filter((d) => !isDeal(d)).slice(0, 300)]
+    .sort((a, b) => String(b.flaggedAt).localeCompare(String(a.flaggedAt)));
+  await store.setJSON("deals", kept);
   await store.setJSON("stats", routeStats);
   await store.setJSON("state", { ...state, lastRun: new Date().toISOString(), lastErrors: errors.slice(0, 10) });
 
